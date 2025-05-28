@@ -26,7 +26,7 @@ services:
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
       DB_NAME: ${MYSQL_DATABASE}
-      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY_FRONTEND} # Chave secreta para o Flask frontend
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY_FRONTEND} # Chave secreta para o Flask frontend (app.py)
     networks:
       - sc-network
     volumes:
@@ -55,8 +55,7 @@ services:
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
       DB_NAME: ${MYSQL_DATABASE}
-      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY_BACKEND} # Chave secreta para o Flask backend (CONFIRMAR QUE CHAVE SECRETA É ESSA)
-      # SERÁ CHAVE SERVER_KEY.PEM?????
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY_BACKEND} # Chave secreta para o Flask backend (app.py)
     
     networks:
       - sc-network
