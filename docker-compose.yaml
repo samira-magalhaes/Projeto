@@ -1,0 +1,106 @@
+services:
+  # Serviço do Servidor Web Nginx
+  web:
+    image: nginx:latest
+    container_name: safe-chat_nginx_server
+    ports:
+      - "443:443" # Mapeia a porta 443 do host para a porta 443 do contêiner Nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./safechat-backend/app/ssl/server:/etc/nginx/certs:ro # Certificados do servidor Nginx
+    networks:
+      - sc-network
+    depends_on:
+      backend-app:
+        condition: service_healthy # Nginx AGORA espera que o backend-app esteja saudável
+      frontend-app: # NOVO: Nginx também espera que o frontend-app esteja saudável
+        condition: service_healthy
+
+  # Serviço da Aplicação Frontend (Python Flask)
+  frontend-app:
+    build: ./safechat-front/app # Caminho para o Dockerfile do frontend
+    container_name: sc-flask_frontend
+    # Linhas 'env_file:' removidas daqui, pois as variáveis virão do .env da raiz.
+    environment:
+      DB_HOST: db # O nome do serviço do banco de dados no Docker Compose
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE}
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY_FRONTEND} # Chave secreta para o Flask frontend
+    networks:
+      - sc-network
+    volumes:
+      - ./safechat-front/app:/app # Monta o código do frontend no contêiner
+      - ./safechat-front/app/static/images/uploads:/app/static/images/uploads
+      - ./safechat-front/app/uploads:/app/uploads # Adicione esta linha se você usa esta pasta
+    depends_on:
+      db:
+        condition: service_healthy # Frontend depende do DB estar saudável
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"] # Corrigido: Porta 8000 para o Gunicorn do frontend
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s # Tempo para o serviço iniciar antes de começar a checagem
+
+  # Serviço da Aplicação Backend (Python Flask-SocketIO com Criptografia)
+  backend-app:
+    build: ./safechat-backend/app # Caminho para o Dockerfile do backend
+    container_name: sc-python_app
+    env_file:
+      - ./safechat-backend/app/.env # Variáveis de ambiente específicas do backend (ex: SERVER_KEY_PASSWORD) - MANTIDO
+      # A linha de env_file do DB foi removida aqui se as variáveis do DB estiverem no .env da raiz
+    environment:
+      DB_HOST: db
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE}
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY_BACKEND} # Chave secreta para o Flask backend (CONFIRMAR QUE CHAVE SECRETA É ESSA)
+      # SERÁ CHAVE SERVER_KEY.PEM?????
+    
+    networks:
+      - sc-network
+    volumes:
+      - ./safechat-backend/app:/app
+      - ./safechat-backend/app/ssl:/app/ssl:ro
+      - ./safechat-backend/app/static/images/uploads:/app/static/images/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:8000/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Serviço do Banco de Dados MySQL
+  db:
+    image: mysql:latest
+    container_name: sc-mysql_db
+    # Linhas 'env_file:' removidas daqui, pois as variáveis virão do .env da raiz.
+    environment: # Variáveis ESSENCIAIS para a imagem MySQL
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./safechat-backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3308:3306"
+    networks:
+      - sc-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u$$MYSQL_USER", "-p$$MYSQL_PASSWORD"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+networks:
+  sc-network:
+    driver: bridge
+
+volumes:
+  db_data:
