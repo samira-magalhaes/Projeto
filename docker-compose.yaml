@@ -4,10 +4,12 @@ services:
     image: nginx:latest
     container_name: safe-chat_nginx_server
     ports:
-      - "443:443" # Mapeia a porta 443 do host para a porta 443 do contêiner Nginx
+      - "80:80"   # Mapeia a porta HTTP para redirecionar para HTTPS
+      - "443:443" # Mapeia a porta HTTPS
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./safechat-backend/app/ssl/server:/etc/nginx/certs:ro # Certificados do servidor Nginx
+      # Monta a pasta ssl/server do backend no Nginx para acesso aos certificados
+      - ./safechat-backend/app/ssl/server:/etc/nginx/certs:ro 
     networks:
       - sc-network
     depends_on:
@@ -60,7 +62,9 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD}
       DB_NAME: ${MYSQL_DATABASE}
       FLASK_SECRET_KEY_BACKEND: ${FLASK_SECRET_KEY_BACKEND} # Chave secreta para o Flask backend (app.py)
-    
+    # REMOVIDA a porta 8000 daqui, pois o Nginx fará o proxy
+    # ports:
+    #   - "8000:8000"    
     networks:
       - sc-network
     volumes:
@@ -71,11 +75,15 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-k", "-f", "https://localhost:8000/health"]
+    # O healthcheck do backend agora deve apontar para o Gunicorn via HTTP,
+      # já que o SSL será terminado no Nginx.
+      test: ["CMD", "curl", "-f", "https://localhost:8000/health"]   # Verifique se /health é o endpoint correto   VERIFICARRRRRRRR
       interval: 10s
       timeout: 10s
       retries: 5
       start_period: 30s
+    # Adicione ou modifique o 'command' para o Gunicorn não usar SSL
+    command: gunicorn -w 4 -k eventlet -b 0.0.0.0:8000 wsgi:app # Gunicorn sem SSL
 
 
 
