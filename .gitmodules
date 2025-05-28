@@ -1,0 +1,6 @@
+[submodule "safechat-backend"]
+	path = safechat-backend
+	url = https://github.com/samira-magalhaes/safechat-backend.git
+[submodule "safechat-front"]
+	path = safechat-front
+	url = https://github.com/RoTZ23/safechat-front.git
