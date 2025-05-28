@@ -77,8 +77,8 @@ services:
     healthcheck:
     # O healthcheck do backend agora deve apontar para o Gunicorn via HTTP,
       # já que o SSL será terminado no Nginx.
-      test: ["CMD", "curl", "-f", "https://localhost:8000/health"]   # Verifique se /health é o endpoint correto   VERIFICARRRRRRRR
-      interval: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]   #removi o SSL do Gunicorn do backend, então ele está a escutar em HTTP. 
+      interval: 10s                                                 # Verifique se /health é o endpoint correto   VERIFICARRRRRRRR
       timeout: 10s
       retries: 5
       start_period: 30s
