@@ -16,8 +16,10 @@ services:
       frontend-app: # NOVO: Nginx também espera que o frontend-app esteja saudável
         condition: service_healthy
 
+
+
   # Serviço da Aplicação Frontend (Python Flask)
-  frontend-app:
+  frontend-app:      # <<-- AQUI REFERE-SE NOME DO SERVIÇO
     build: ./safechat-front/app # Caminho para o Dockerfile do frontend
     container_name: sc-flask_frontend
     # Linhas 'env_file:' removidas daqui, pois as variáveis virão do .env da raiz.
@@ -43,8 +45,10 @@ services:
       retries: 5
       start_period: 30s # Tempo para o serviço iniciar antes de começar a checagem
 
+
+
   # Serviço da Aplicação Backend (Python Flask-SocketIO com Criptografia)
-  backend-app:
+  backend-app:    # <<-- AQUI REFERE-SE NOME DO SERVIÇO
     build: ./safechat-backend/app # Caminho para o Dockerfile do backend
     container_name: sc-python_app
     env_file:
@@ -72,6 +76,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+
+
 
   # Serviço do Banco de Dados MySQL
   db:
