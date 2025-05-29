@@ -1,15 +1,25 @@
 services:
   # Serviço do Servidor Web Nginx
   web:
-    image: nginx:latest
+    # Usei 'build' em vez de 'image' para poder adicionar o entrypoint.sh e outras configurações
+    build:
+      context: ./nginx # Indica onde está o Dockerfile para construir a imagem do Nginx
+      dockerfile: Dockerfile # O nome do Dockerfile que você criou (em ./nginx/Dockerfile)
+    # image: nginx:latest # REMOVA OU COMENTE esta linha, pois agora a imagem foi criada
     container_name: safe-chat_nginx_server
     ports:
       - "80:80"   # Mapeia a porta HTTP para redirecionar para HTTPS
       - "443:443" # Mapeia a porta HTTPS
     volumes:
+      # Mapeia o seu nginx.conf customizado para o contêiner
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      # Monta a pasta ssl/server do backend no Nginx para acesso aos certificados
-      - ./safechat-backend/app/ssl/server:/etc/nginx/certs:ro 
+      # Mapeia a pasta de certificados do backend para dentro do contêiner Nginx
+      # Assim, o Nginx pode acessar server.crt e server_key.pem (com senha)
+      - ./safechat-backend/app/ssl/server:/etc/nginx/certs:ro
+      # NÃO PRECISAMOS mapear o entrypoint.sh aqui, pois ele será COPIADO pelo Dockerfile
+    environment:
+      # Injeta a senha da chave privada do Nginx como uma variável de ambiente
+      SERVER_KEY_PASSPHRASE: ${SERVER_KEY_PASSWORD_NGINX} # A senha virá do seu arquivo .env principal    
     networks:
       - sc-network
     depends_on:
