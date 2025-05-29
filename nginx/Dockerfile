@@ -3,6 +3,9 @@ FROM nginx:stable-alpine
 
 # O diretório de trabalho padrão do Nginx é /etc/nginx
 
+# Adicione esta linha para instalar openssl
+RUN apk add --no-cache openssl
+
 # Remove o arquivo de configuração padrão do Nginx para evitar conflitos
 RUN rm /etc/nginx/conf.d/default.conf || true # O '|| true' evita erro se o arquivo já não existir
 
