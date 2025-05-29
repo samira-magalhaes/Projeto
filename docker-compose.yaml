@@ -31,25 +31,35 @@ services:
 
 
   # Serviço da Aplicação Frontend (Python Flask)
-  frontend-app:      # <<-- AQUI REFERE-SE NOME DO SERVIÇO
+  frontend-app:      # <<-- AQUI REFERE-SE NOME DO SERVIÇO  -    Serviço da Aplicação Frontend (Python Flask)
     build: ./safechat-front/app # Caminho para o Dockerfile do frontend
     container_name: sc-flask_frontend
     # Linhas 'env_file:' removidas daqui, pois as variáveis virão do .env da raiz.
+    ports:
+      - "8000:8000" # ADICIONADO: Mapeia a porta do Flask/Gunicorn para fora do contêiner
     environment:
       DB_HOST: db # O nome do serviço do banco de dados no Docker Compose
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
       DB_NAME: ${MYSQL_DATABASE}
       FLASK_SECRET_KEY_FRONTEND: ${FLASK_SECRET_KEY_FRONTEND} # Chave secreta para o Flask frontend (app.py)
+      # Estes caminhos são RELATIVOS ao diretório /app/ssl_keys_from_backend dentro do container.
+      CLIENT1_PUB_KEY_PATH: client/client_pubkey.pem
+      CLIENT1_PRIV_KEY_PATH: client/client_key.pem
+      CLIENT2_PUB_KEY_PATH: client2/client2_pubkey.pem
+      CLIENT2_PRIV_KEY_PATH: client2/client2_key.pem
     networks:
       - sc-network
     volumes:
       - ./safechat-front/app:/app # Monta o código do frontend no contêiner
       - ./safechat-front/app/static/images/uploads:/app/static/images/uploads
       - ./safechat-front/app/uploads:/app/uploads # Adicione esta linha se você usa esta pasta
+      - ./safechat-backend/app/ssl/:/app/ssl_keys_from_backend
     depends_on:
       db:
         condition: service_healthy # Frontend depende do DB estar saudável
+      backend-app: # ADICIONADO: Depende do backend-app ('sc-python_app')
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"] # Corrigido: Porta 8000 para o Gunicorn do frontend
       interval: 10s
