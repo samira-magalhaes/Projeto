@@ -1,90 +1,106 @@
+version: '3.8'
+
 services:
   # Serviço do Servidor Web Nginx
   web:
-    # Usei 'build' em vez de 'image' para poder adicionar o entrypoint.sh e outras configurações
     build:
-      context: ./nginx # Indica onde está o Dockerfile para construir a imagem do Nginx
-      dockerfile: Dockerfile # O nome do Dockerfile que você criou (em ./nginx/Dockerfile)
-    # image: nginx:latest # REMOVA OU COMENTE esta linha, pois agora a imagem foi criada
+      context: ./nginx
+      dockerfile: Dockerfile
     container_name: safe-chat_nginx_server
     ports:
-      - "80:80"   # Mapeia a porta HTTP para redirecionar para HTTPS
-      - "443:443" # Mapeia a porta HTTPS
+      - "80:80"
+      - "443:443"
     volumes:
-      # Mapeia o seu nginx.conf customizado para o contêiner
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      # Mapeia a pasta de certificados do backend para dentro do contêiner Nginx
-      # Assim, o Nginx pode acessar server.crt e server_key.pem (com senha)
       - ./safechat-backend/app/ssl/server:/etc/nginx/certs:ro
-      # NÃO PRECISAMOS mapear o entrypoint.sh aqui, pois ele será COPIADO pelo Dockerfile
     environment:
-      # Injeta a senha da chave privada do Nginx como uma variável de ambiente
-      SERVER_KEY_PASSPHRASE: ${SERVER_KEY_PASSWORD_NGINX} # A senha virá do seu arquivo .env principal    
+      # Certifique-se de que esta variável é usada dentro do seu nginx.conf se o Nginx precisar dela,
+      # ou remova se a senha for lida via ssl_password_file.
+      # Para mTLS com Gunicorn, o Gunicorn lida com a chave do servidor e senha.
+      SERVER_KEY_PASSPHRASE: ${SERVER_KEY_PASSWORD_NGINX}
     networks:
       - sc-network
     depends_on:
       backend-app:
-        condition: service_healthy # Nginx AGORA espera que o backend-app esteja saudável
-      frontend-app: # NOVO: Nginx também espera que o frontend-app esteja saudável
         condition: service_healthy
+      frontend-app:
+        condition: service_healthy
+    healthcheck: # Adicionando healthcheck para o Nginx
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-
-
-  # Serviço da Aplicação Frontend (Python Flask)
-  frontend-app:      # <<-- AQUI REFERE-SE NOME DO SERVIÇO  -    Serviço da Aplicação Frontend (Python Flask)
-    build: ./safechat-front/app # Caminho para o Dockerfile do frontend
-    container_name: sc-flask_frontend
-    # Linhas 'env_file:' removidas daqui, pois as variáveis virão do .env da raiz.
+  # Serviço do Banco de Dados Redis (Message Queue para Socket.IO)
+  redis:
+    image: redis:latest
+    container_name: sc-redis
     ports:
-      - "8000:8000" # ADICIONADO: Mapeia a porta do Flask/Gunicorn para fora do contêiner
-    environment:
-      DB_HOST: db # O nome do serviço do banco de dados no Docker Compose
-      DB_USER: ${MYSQL_USER}
-      DB_PASSWORD: ${MYSQL_PASSWORD}
-      DB_NAME: ${MYSQL_DATABASE}
-      FLASK_SECRET_KEY_FRONTEND: ${FLASK_SECRET_KEY_FRONTEND} # Chave secreta para o Flask frontend (app.py)
-      # Estes caminhos são RELATIVOS ao diretório /app/ssl_keys_from_backend dentro do container.
-      CLIENT1_PUB_KEY_PATH: client/client_pubkey.pem
-      CLIENT1_PRIV_KEY_PATH: client/client_key.pem
-      CLIENT2_PUB_KEY_PATH: client2/client2_pubkey.pem
-      CLIENT2_PRIV_KEY_PATH: client2/client2_key.pem
+      - "6379:6379"
     networks:
       - sc-network
-    volumes:
-      - ./safechat-front/app:/app # Monta o código do frontend no contêiner
-      - ./safechat-front/app/static/images/uploads:/app/static/images/uploads
-      - ./safechat-front/app/uploads:/app/uploads # Adicione esta linha se você usa esta pasta
-      - ./safechat-backend/app/ssl/:/app/ssl_keys_from_backend
-    depends_on:
-      db:
-        condition: service_healthy # Frontend depende do DB estar saudável
-      backend-app: # ADICIONADO: Depende do backend-app ('sc-python_app')
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"] # Corrigido: Porta 8000 para o Gunicorn do frontend
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeout: 10s
+      timeout: 5s
       retries: 5
-      start_period: 30s # Tempo para o serviço iniciar antes de começar a checagem
 
-
-
-  # Serviço da Aplicação Backend (Python Flask-SocketIO com Criptografia)
-  backend-app:    # <<-- AQUI REFERE-SE NOME DO SERVIÇO
-    build: ./safechat-backend/app # Caminho para o Dockerfile do backend
-    container_name: sc-python_app
-    env_file:
-      - ./safechat-backend/app/.env # Variáveis de ambiente específicas do backend (ex: SERVER_KEY_PASSWORD) - MANTIDO
-      # A linha de env_file do DB foi removida aqui se as variáveis do DB estiverem no .env da raiz
+  # Serviço da Aplicação Frontend (Python Flask)
+  frontend-app:
+    build: ./safechat-front/app
+    container_name: sc-flask_frontend
     environment:
       DB_HOST: db
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
       DB_NAME: ${MYSQL_DATABASE}
-      FLASK_SECRET_KEY_BACKEND: ${FLASK_SECRET_KEY_BACKEND} # Chave secreta para o Flask backend (app.py)
-    # REMOVIDA a porta 8000 daqui, pois o Nginx fará o proxy
-    # ports:
-    #   - "8000:8000"    
+      FLASK_SECRET_KEY_FRONTEND: ${FLASK_SECRET_KEY_FRONTEND}
+      # Removidas as variáveis de chaves públicas/privadas, pois o frontend geralmente não as utiliza diretamente.
+      # Se o seu frontend as usa, adicione de volta e ajuste os caminhos.
+    networks:
+      - sc-network
+    volumes:
+      - ./safechat-front/app:/app
+      # Mantenha apenas o volume de uploads se o frontend também precisar escrever lá,
+      # caso contrário, ele só precisa acessar o do backend via URL.
+      # Se o frontend só lê uploads do backend, este volume não é estritamente necessário.
+      # - ./safechat-front/app/static/images/uploads:/app/static/images/uploads
+      # O volume abaixo foi removido por ser inconsistente com a definição do Flask.
+      # - ./safechat-front/app/uploads:/app/uploads
+      - ./safechat-backend/app/ssl:/app/ssl_keys_from_backend:ro # Acesso de leitura às chaves do backend para o frontend (se necessário)
+    depends_on:
+      db:
+        condition: service_healthy
+      backend-app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"] # Use a rota real se tiver uma de healthcheck
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    # Adicione o comando para iniciar o Gunicorn ou Flask em modo de produção
+    command: gunicorn -w 4 -b 0.0.0.0:8000 app:app # Exemplo, ajuste para o seu arquivo de entrada do Flask
+
+  # Serviço da Aplicação Backend (Python Flask-SocketIO com Criptografia)
+  backend-app:
+    build: ./safechat-backend/app
+    container_name: sc-python_app
+    # Use env_file para carregar variáveis do .env principal do projeto,
+    # e/ou de um .env específico do backend se necessário.
+    # Evite duplicar variáveis que já estão no .env principal.
+    env_file:
+      - ./.env # Carrega o .env da raiz do projeto para variáveis como MYSQL_USER, etc.
+      - ./safechat-backend/app/.env # Carrega variáveis específicas do backend se houver (ex: FLASK_SECRET_KEY_BACKEND)
+    environment:
+      # Remova as variáveis duplicadas se já estiverem nos arquivos .env
+      # DB_HOST: db
+      # DB_USER: ${MYSQL_USER}
+      # DB_PASSWORD: ${MYSQL_PASSWORD}
+      # DB_NAME: ${MYSQL_DATABASE}
+      # FLASK_SECRET_KEY_BACKEND: ${FLASK_SECRET_KEY_BACKEND}
+      REDIS_URL: redis://redis:6379 # Passa a URL do Redis para o backend
     networks:
       - sc-network
     volumes:
@@ -94,25 +110,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy # Use 'service_healthy' para o Redis
     healthcheck:
-    # O healthcheck do backend agora deve apontar para o Gunicorn via HTTP,
-      # já que o SSL será terminado no Nginx.
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]   #removi o SSL do Gunicorn do backend, então ele está a escutar em HTTP. 
-      interval: 10s                                                 # Verifique se /health é o endpoint correto   VERIFICARRRRRRRR
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 30s
-    # Adicione ou modifique o 'command' para o Gunicorn não usar SSL
-    command: gunicorn -w 4 -k eventlet -b 0.0.0.0:8000 wsgi:app # Gunicorn sem SSL
-
-
+    command: gunicorn -w 4 -k eventlet -b 0.0.0.0:8000 wsgi:app
 
   # Serviço do Banco de Dados MySQL
   db:
     image: mysql:latest
     container_name: sc-mysql_db
-    # Linhas 'env_file:' removidas daqui, pois as variáveis virão do .env da raiz.
-    environment: # Variáveis ESSENCIAIS para a imagem MySQL
+    environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
