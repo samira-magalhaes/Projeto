@@ -37,7 +37,7 @@ O **SafeChat** é uma aplicação de chat seguro ponto-a-ponto que combina cript
 ### 1. Clone o repositório
 
 ```bash
-git clone https://github.com/seuusuario/SafeChat.git
+git clone https://github.com/samira-magalhaes/Projeto.git
 cd SafeChat
 ```
 
